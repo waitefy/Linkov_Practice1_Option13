@@ -47,11 +47,11 @@ class Shell:
                       f"Нет такого файла или каталога")
             elif node['type'] == 'file':
                 print(abs_path.rsplit('/',1)[-1])
-            else:
+            elif node['children']:
                 print('\t'.join(sorted(node['children'].keys())))
 
     def cmd_cd(self, args):
-        if args is None: args = []
+        if not args: args = []
         if len(args) > 1:
             print('bash: cd: слишком много аргументов')
             return
@@ -92,7 +92,7 @@ class Shell:
         print('VFS инициализирована')
 
     def cmd_wc(self, args):
-        if args is None:
+        if not args:
             return
         total_lines = total_words = total_bytes = 0
         for path in args:
@@ -158,6 +158,42 @@ class Shell:
             return
         print(self.username)
 
+    def cmd_cp(self, args):
+        if not args:
+            print('cp: пропущен операнд, задающий файл')
+            return
+        if len(args) < 2:
+            print(f"cp: после '{args[0]}' пропущен операнд, "
+                  f"задающий целевой файл")
+            return
+        dst_path = args[-1]
+        for src_path in args[:-1]:
+            abs_src = self.resolve_path(src_path)
+            abs_dst = self.resolve_path(dst_path)
+            src_node = self.get_node(abs_src)
+            if src_node is None:
+                print(f"cp: не удалось выполнить '{src_path}': "
+                      f"Нет такого файла или каталога")
+                return
+            if src_node['type'] != 'file':
+                print(f"cp: не указан -r; пропускается каталог '{src_path}'")
+                return
+            dst_parent_path = abs_dst.rsplit('/', 1)[0] or '/'
+            dst_name = abs_dst.rsplit('/', 1)[-1]
+            parent_node = self.get_node(dst_parent_path)
+            if parent_node is None or parent_node['type'] != 'dir':
+                print(f"cp: невозможно создать обычный файл '{dst_path}': "
+                      f"Нет такого каталога")
+                return
+            dst_node = self.get_node(abs_dst)
+            if dst_node and dst_node['type'] == 'dir':
+                dst_name = abs_src.rsplit('/', 1)[-1]
+                parent_node = dst_node
+            parent_node['children'][dst_name] = {
+                'type': 'file',
+                'data': src_node['data'][:]
+            }
+
     def execute(self, command, args=None):
         if command == 'ls':
             self.cmd_ls(args)
@@ -177,6 +213,8 @@ class Shell:
             self.cmd_tree(args)
         elif command == 'whoami':
             self.cmd_whoami(args)
+        elif command == 'cp':
+            self.cmd_cp(args)
         else:
             print(f'{command}: команда не найдена')
 
@@ -266,7 +304,7 @@ def settings_input():
     while not start_script_path:
         path = input('Путь к стартовому скрипту: ')
         if not path:
-            continue
+            break
         if os.path.exists(path):
             if os.path.isfile(path):
                 start_script_path = path
@@ -279,11 +317,11 @@ def settings_input():
 
 
 def debug_output(vfs_path, start_script_path):
-    print(
-        f'Параметры запуска (отладочный вывод):\n'
-        f'    VFS: {vfs_path}\n'
-        f'    Script: {start_script_path}\n'
-    )
+    if vfs_path or start_script_path:
+        print(f'Параметры запуска (отладочный вывод):')
+        if vfs_path: print(f'    VFS: {vfs_path}')
+        if start_script_path: print(f'    Script: {start_script_path}')
+        print()
 
 
 def main():
@@ -292,9 +330,10 @@ def main():
     sh = Shell(build_node(vfs_path) if vfs_path else {}, vfs_path)
     if vfs_path is None:
         sh.vfs = default_vfs(sh.username)
-    print('Начало выполнения стартового скрипта')
-    sh.run_script(start_script_path)
-    print('Стартовый скрипт выполнен успешно')
+    if start_script_path:
+        print('Начало выполнения стартового скрипта')
+        sh.run_script(start_script_path)
+        print('Стартовый скрипт выполнен успешно')
     sh.repl()
 
 

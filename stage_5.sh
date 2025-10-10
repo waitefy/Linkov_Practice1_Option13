@@ -1,0 +1,1 @@
+bash scripts/test_cp.sh
